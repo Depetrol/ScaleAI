@@ -129,7 +129,7 @@ int main(int argc, char** argv) {
     double seconds = diff.count();
 
     // Finalize
-    std::cout << "Simulation Time = " << seconds << " seconds for " << layer_size << " layers.\n";
+    std::cout << seconds << "\n";
     cudaFree(input_gpu);
     cudaFree(output_gpu);
     cudaFree(weights_gpu);

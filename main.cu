@@ -7,15 +7,33 @@
 #include <random>
 #include <vector>
 #include <thrust/reduce.h>
+#include <thrust/for_each.h>
 #include <thrust/execution_policy.h>
+#include <thrust/functional.h>
+#include <thrust/device_ptr.h>
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/discard_iterator.h>
 
 #define NUM_THREADS 32
+
+int LSIZE;
 
 int blk;
 
 // =================
 // Helper Functions
 // =================
+
+struct div_op : public thrust::unary_function<int, int> {
+    int layer_size;
+
+    div_op(int layer_size) : layer_size(layer_size) {}
+
+    __host__ __device__ int operator()(int x) const {
+        return x / layer_size;
+    }
+};
 
 // Command Line Option Processing
 int find_arg_idx(int argc, char** argv, const char* option) {
@@ -52,7 +70,7 @@ void init(double *input, double *weights, double *biases, int layer_size, int pa
         }
     }
 
-    blk = 1;
+    blk = 50;
 }
 
 __global__ void weighing_gpu(double* input, double* weights, double* midresult, int layer_size) {
@@ -76,6 +94,15 @@ void forward_propagation(double* input, double* weights, double* biases, double*
     weighing_gpu<<<blk, NUM_THREADS>>>(input, weights, midresult, layer_size);
 
     // TODO: thrust for_each and thrust_reduce
+    thrust::reduce_by_key(
+        thrust::make_transform_iterator(thrust::counting_iterator<int>(0), div_op(layer_size)),
+        thrust::make_transform_iterator(thrust::counting_iterator<int>(layer_size), div_op(layer_size)),
+        thrust::device_pointer_cast(midresult),
+        thrust::discard_iterator<>(),
+        thrust::device_pointer_cast(output),
+        thrust::equal_to<int>(),
+        thrust::plus<double>()
+    );
 
     activation_gpu<<<blk, NUM_THREADS>>>(biases, output, layer_size);
 }
@@ -99,6 +126,7 @@ int main(int argc, char** argv) {
     int nsteps = find_int_arg(argc, argv, "-n", 1000);
     int part_seed = find_int_arg(argc, argv, "-s", 0);
     int layer_size = find_int_arg(argc, argv, "-l", 1024);
+    LSIZE = layer_size;
 
     double* input = new double[layer_size];
     double* output = new double[layer_size];
@@ -141,7 +169,7 @@ int main(int argc, char** argv) {
     double seconds = diff.count();
 
     // Finalize
-    std::cout << "Simulation Time = " << seconds << " seconds for " << layer_size << " layers.\n";
+    std::cout << seconds << "\n";
     cudaFree(input_gpu);
     cudaFree(output_gpu);
     cudaFree(weights_gpu);
