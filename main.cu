@@ -96,7 +96,7 @@ void forward_propagation(double* input, double* weights, double* biases, double*
     // TODO: thrust for_each and thrust_reduce
     thrust::reduce_by_key(
         thrust::make_transform_iterator(thrust::counting_iterator<int>(0), div_op(layer_size)),
-        thrust::make_transform_iterator(thrust::counting_iterator<int>(layer_size), div_op(layer_size)),
+        thrust::make_transform_iterator(thrust::counting_iterator<int>(layer_size * layer_size), div_op(layer_size)),
         thrust::device_pointer_cast(midresult),
         thrust::discard_iterator<>(),
         thrust::device_pointer_cast(output),
