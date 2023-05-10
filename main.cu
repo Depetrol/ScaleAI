@@ -69,8 +69,6 @@ void init(double *input, double *weights, double *biases, int layer_size, int pa
             weights[i * layer_size + j] = rand_real(gen);
         }
     }
-
-    blk = 50;
 }
 
 __global__ void weighing_gpu(double* input, double* weights, double* midresult, int layer_size) {
@@ -91,7 +89,7 @@ __global__ void activation_gpu(double* biases, double* output, int layer_size) {
 void forward_propagation(double* input, double* weights, double* biases, double* output, int layer_size, double* midresult) {
     // input, weights, biases, output, midresult live in gpu memory
 
-    weighing_gpu<<<blk, NUM_THREADS>>>(input, weights, midresult, layer_size);
+    weighing_gpu<<<(layer_size * layer_size + NUM_THREADS - 1) / NUM_THREADS, NUM_THREADS>>>(input, weights, midresult, layer_size);
 
     // TODO: thrust for_each and thrust_reduce
     thrust::reduce_by_key(
@@ -104,7 +102,7 @@ void forward_propagation(double* input, double* weights, double* biases, double*
         thrust::plus<double>()
     );
 
-    activation_gpu<<<blk, NUM_THREADS>>>(biases, output, layer_size);
+    activation_gpu<<<(layer_size + NUM_THREADS - 1) / NUM_THREADS, NUM_THREADS>>>(biases, output, layer_size);
 }
 
 // ==============
