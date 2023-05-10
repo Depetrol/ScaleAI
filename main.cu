@@ -71,9 +71,11 @@ __global__ void activation_gpu(double* biases, double* output, int layer_size) {
 }
 
 void forward_propagation(double* input, double* weights, double* biases, double* output, int layer_size, double* midresult) {
-    // input, weights, biases, output live in gpu memory
+    // input, weights, biases, output, midresult live in gpu memory
 
     weighing_gpu<<<blk, NUM_THREADS>>>(input, weights, midresult, layer_size);
+
+    // TODO: thrust for_each and thrust_reduce
 
     activation_gpu<<<blk, NUM_THREADS>>>(biases, output, layer_size);
 }
