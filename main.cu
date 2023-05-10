@@ -6,8 +6,12 @@
 #include <iostream>
 #include <random>
 #include <vector>
+#include <thrust/reduce.h>
+#include <thrust/execution_policy.h>
 
 #define NUM_THREADS 32
+
+int blk;
 
 // =================
 // Helper Functions
@@ -47,22 +51,31 @@ void init(double *input, double *weights, double *biases, int layer_size, int pa
             weights[i * layer_size + j] = rand_real(gen);
         }
     }
+
+    blk = 1;
 }
 
-double sigmoid(double x) {
-    return 1 / (1 + exp(-x));
+__global__ void weighing_gpu(double* input, double* weights, double* midresult, int layer_size) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= layer_size * layer_size)
+        return;
+    int j = tid % layer_size;
+    midresult[tid] = weights[tid] * input[j];
 }
 
-void forward_propagation(const double *input, const double *weights, const double *biases, double *output, int layer_size) {
+__global__ void activation_gpu(double* biases, double* output, int layer_size) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= layer_size)
+        return;
+    output[tid] = 1 / (1 + exp(-(output[tid] + biases[tid])));
+}
+
+void forward_propagation(double* input, double* weights, double* biases, double* output, int layer_size, double* midresult) {
     // input, weights, biases, output live in gpu memory
 
-    for (int i = 0; i < layer_size; i++) {
-        double weighted_sum = biases[i];
-        for (int j = 0; j < layer_size; j++) {
-            weighted_sum += input[j] * weights[i * layer_size + j];
-        }
-        output[i] = sigmoid(weighted_sum);
-    }
+    weighing_gpu<<<blk, NUM_THREADS>>>(input, weights, midresult, layer_size);
+
+    activation_gpu<<<blk, NUM_THREADS>>>(biases, output, layer_size);
 }
 
 // ==============
@@ -92,12 +105,32 @@ int main(int argc, char** argv) {
 
     init(input, weights, biases, layer_size, part_seed);
 
+    double* input_gpu;
+    double* output_gpu;
+    double* weights_gpu;
+    double* biases_gpu;
+    double* midresult;
+
+    cudaMalloc((void**)&input_gpu, layer_size * sizeof(double));
+    cudaMalloc((void**)&output_gpu, layer_size * sizeof(double));
+    cudaMalloc((void**)&weights_gpu, layer_size * layer_size * sizeof(double));
+    cudaMalloc((void**)&biases_gpu, layer_size * sizeof(double));
+    cudaMalloc((void**)&midresult, layer_size * layer_size * sizeof(double));
+
+
+    cudaMemcpy(input_gpu, input, layer_size * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(output_gpu, output, layer_size * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(weights_gpu, weights, layer_size * layer_size * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(biases_gpu, biases, layer_size * sizeof(double), cudaMemcpyHostToDevice);
+
     // Algorithm
     auto start_time = std::chrono::steady_clock::now();
 
     for (int step = 0; step < nsteps; ++step) {
-        forward_propagation(input_gpu, weights_gpu, biases_gpu, output_gpu, layer_size);
-        forward_propagation(output_gpu, weights_gpu, biases_gpu, input_gpu, layer_size);
+        forward_propagation(input_gpu, weights_gpu, biases_gpu, output_gpu, layer_size, midresult);
+        cudaDeviceSynchronize();
+        forward_propagation(output_gpu, weights_gpu, biases_gpu, input_gpu, layer_size, midresult);
+        cudaDeviceSynchronize();
     }
 
     auto end_time = std::chrono::steady_clock::now();
@@ -107,8 +140,14 @@ int main(int argc, char** argv) {
 
     // Finalize
     std::cout << "Simulation Time = " << seconds << " seconds for " << layer_size << " layers.\n";
+    cudaFree(input_gpu);
+    cudaFree(output_gpu);
+    cudaFree(weights_gpu);
+    cudaFree(biases_gpu);
+    cudaFree(midresult);
     delete[] input;
     delete[] output;
     delete[] weights;
     delete[] biases;
+    return 0;
 }
