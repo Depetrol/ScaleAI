@@ -1,10 +1,13 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <cuda.h>
 #include <fstream>
 #include <iostream>
 #include <random>
 #include <vector>
+
+#define NUM_THREADS 32
 
 // =================
 // Helper Functions
@@ -51,6 +54,8 @@ double sigmoid(double x) {
 }
 
 void forward_propagation(const double *input, const double *weights, const double *biases, double *output, int layer_size) {
+    // input, weights, biases, output live in gpu memory
+
     for (int i = 0; i < layer_size; i++) {
         double weighted_sum = biases[i];
         for (int j = 0; j < layer_size; j++) {
@@ -76,9 +81,9 @@ int main(int argc, char** argv) {
     }
 
     // Initialize Particles
-    int nsteps = find_int_arg(argc, argv, "-n", 10000);
+    int nsteps = find_int_arg(argc, argv, "-n", 1000);
     int part_seed = find_int_arg(argc, argv, "-s", 0);
-    int layer_size = find_int_arg(argc, argv, "-l", 512);
+    int layer_size = find_int_arg(argc, argv, "-l", 1024);
 
     double* input = new double[layer_size];
     double* output = new double[layer_size];
@@ -91,8 +96,8 @@ int main(int argc, char** argv) {
     auto start_time = std::chrono::steady_clock::now();
 
     for (int step = 0; step < nsteps; ++step) {
-        forward_propagation(input, weights, biases, output, layer_size);
-        forward_propagation(output, weights, biases, input, layer_size);
+        forward_propagation(input_gpu, weights_gpu, biases_gpu, output_gpu, layer_size);
+        forward_propagation(output_gpu, weights_gpu, biases_gpu, input_gpu, layer_size);
     }
 
     auto end_time = std::chrono::steady_clock::now();
