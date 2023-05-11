@@ -114,8 +114,8 @@ int main(int argc, char** argv) {
     if (find_arg_idx(argc, argv, "-h") >= 0) {
         std::cout << "Options:" << std::endl;
         std::cout << "-h: see this help" << std::endl;
-        std::cout << "-n <int>: set number of steps" << std::endl;
-        std::cout << "-l <int>: set layer size" << std::endl;
+        std::cout << "-n <int>: set number of layers" << std::endl;
+        std::cout << "-w <int>: set network width" << std::endl;
         std::cout << "-s <int>: set particle initialization seed" << std::endl;
         return 0;
     }
@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
     // Initialize Particles
     int nsteps = find_int_arg(argc, argv, "-n", 1000);
     int part_seed = find_int_arg(argc, argv, "-s", 0);
-    int layer_size = find_int_arg(argc, argv, "-l", 1024);
+    int layer_size = find_int_arg(argc, argv, "-w", 1024);
     LSIZE = layer_size;
 
     double* input = new double[layer_size];
