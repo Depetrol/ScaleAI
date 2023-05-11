@@ -9,7 +9,7 @@
 #include <thrust/reduce.h>
 #include <thrust/execution_policy.h>
 
-#define NUM_THREADS 32
+int NUM_THREADS = 32;
 
 int blk;
 
@@ -87,6 +87,7 @@ int main(int argc, char** argv) {
         std::cout << "-h: see this help" << std::endl;
         std::cout << "-n <int>: set number of layers" << std::endl;
         std::cout << "-w <int>: set network width" << std::endl;
+        std::cout << "-t <int>: NUM_THREADS" << std::endl;
         std::cout << "-s <int>: set particle initialization seed" << std::endl;
         return 0;
     }
@@ -95,6 +96,7 @@ int main(int argc, char** argv) {
     int nsteps = find_int_arg(argc, argv, "-n", 1000);
     int part_seed = find_int_arg(argc, argv, "-s", 0);
     int layer_size = find_int_arg(argc, argv, "-w", 1024);
+    NUM_THREADS = find_int_arg(argc, argv, "-t", 1024);
 
     // double* input = new double[layer_size];
     double* output[nsteps + 1];
