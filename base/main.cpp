@@ -31,17 +31,22 @@ int find_int_arg(int argc, char** argv, const char* option, int default_value) {
 }
 
 // Particle Initialization
-void init(double *input, double *weights, double *biases, int layer_size, int part_seed) {
+void init(double** output, double** weights, double** biases, int layer_size, int part_seed, int nsteps) {
     std::random_device rd;
     std::mt19937 gen(part_seed ? part_seed : rd());
 
     std::uniform_real_distribution<double> rand_real(-1000.0, 1000.0);
 
     for (int i = 0; i < layer_size; ++i) {
-        biases[i] = rand_real(gen);
-        input[i] = rand_real(gen);
-        for (int j = 0; j < layer_size; ++j) {
-            weights[i * layer_size + j] = rand_real(gen);
+        output[0][i] = rand_real(gen);
+    }
+
+    for (int step = 0; step < nsteps; ++step) {
+        for (int i = 0; i < layer_size; ++i) {
+            biases[step][i] = rand_real(gen);
+            for (int j = 0; j < layer_size; ++j) {
+                weights[step][i * layer_size + j] = rand_real(gen);
+            }
         }
     }
 }
@@ -80,19 +85,24 @@ int main(int argc, char** argv) {
     int part_seed = find_int_arg(argc, argv, "-s", 0);
     int layer_size = find_int_arg(argc, argv, "-w", 1024);
 
-    double* input = new double[layer_size];
-    double* output = new double[layer_size];
-    double* weights = new double[layer_size * layer_size];
-    double* biases = new double[layer_size];
+    double* output[nsteps + 1];
+    double* weights[nsteps];
+    double* biases[nsteps];
 
-    init(input, weights, biases, layer_size, part_seed);
+    for (int step = 0; step < nsteps; ++step) {
+        output[step] = new double[layer_size];
+        weights[step] = new double[layer_size * layer_size];
+        biases[step] = new double[layer_size];
+    }
+    output[nsteps] = new double[layer_size];
+
+    init(output, weights, biases, layer_size, part_seed, nsteps);
 
     // Algorithm
     auto start_time = std::chrono::steady_clock::now();
 
     for (int step = 0; step < nsteps; ++step) {
-        forward_propagation(input, weights, biases, output, layer_size);
-        forward_propagation(output, weights, biases, input, layer_size);
+        forward_propagation(output[step], weights[step], biases[step], output[step + 1], layer_size);
     }
 
     auto end_time = std::chrono::steady_clock::now();
@@ -102,8 +112,10 @@ int main(int argc, char** argv) {
 
     // Finalize
     std::cout << seconds << "\n";
-    delete[] input;
-    delete[] output;
-    delete[] weights;
-    delete[] biases;
+    for (int step = 0; step < nsteps; ++step) {
+        delete[] output[step];
+        delete[] weights[step];
+        delete[] biases[step];
+    }
+    delete[] output[nsteps];
 }

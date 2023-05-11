@@ -184,7 +184,7 @@ int main(int argc, char** argv) {
         delete[] biases[step];
     }
     cudaFree(output_gpu[nsteps]);
-    delete[] output_gpu[nsteps];
+    delete[] output[nsteps];
     
     return 0;
 }
