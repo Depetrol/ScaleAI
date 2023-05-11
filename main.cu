@@ -17,6 +17,11 @@
 
 int NUM_THREADS = 32;
 
+std::chrono::duration<double> multiply;
+std::chrono::duration<double> reduce;
+std::chrono::duration<double> activate;
+
+
 // =================
 // Helper Functions
 // =================
@@ -90,9 +95,15 @@ __global__ void activation_gpu(double* biases, double* output, int layer_size) {
 void forward_propagation(double* input, double* weights, double* biases, double* output, int layer_size, double* midresult) {
     // input, weights, biases, output, midresult live in gpu memory
 
+    auto start_mul = std::chrono::steady_clock::now();
+
     weighing_gpu<<<(layer_size * layer_size + NUM_THREADS - 1) / NUM_THREADS, NUM_THREADS>>>(input, weights, midresult, layer_size);
 
-    // TODO: thrust for_each and thrust_reduce
+    auto end_mul = std::chrono::steady_clock::now();
+    multiply += end_mul - start_mul;
+
+    auto start_red = std::chrono::steady_clock::now();
+    // thrust for_each and thrust_reduce
     thrust::reduce_by_key(
         thrust::make_transform_iterator(thrust::counting_iterator<int>(0), div_op(layer_size)),
         thrust::make_transform_iterator(thrust::counting_iterator<int>(layer_size * layer_size), div_op(layer_size)),
@@ -102,8 +113,13 @@ void forward_propagation(double* input, double* weights, double* biases, double*
         thrust::equal_to<int>(),
         thrust::plus<double>()
     );
+    auto end_red = std::chrono::steady_clock::now();
+    reduce += end_red - start_red;
 
+    auto start_act = std::chrono::steady_clock::now();
     activation_gpu<<<(layer_size + NUM_THREADS - 1) / NUM_THREADS, NUM_THREADS>>>(biases, output, layer_size);
+    auto end_act = std::chrono::steady_clock::now();
+    activate += end_act - start_act;
 }
 
 // ==============
@@ -172,9 +188,12 @@ int main(int argc, char** argv) {
 
     std::chrono::duration<double> diff = end_time - start_time;
     double seconds = diff.count();
+    double mul = multiply.count();
+    double red = reduce.count();
+    double act = activate.count();
 
     // Finalize
-    std::cout << seconds << "\n";
+    std::cout << seconds << " " << mul << " " << red << " " << act << " " << "\n";
     
     cudaFree(midresult);
     for (int step = 0; step < nsteps; ++step) {
