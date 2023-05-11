@@ -38,17 +38,22 @@ int find_int_arg(int argc, char** argv, const char* option, int default_value) {
 }
 
 // Particle Initialization
-void init(double *input, double *weights, double *biases, int layer_size, int part_seed) {
+void init(double** output, double** weights, double** biases, int layer_size, int part_seed, int nsteps) {
     std::random_device rd;
     std::mt19937 gen(part_seed ? part_seed : rd());
 
     std::uniform_real_distribution<double> rand_real(-1000.0, 1000.0);
 
     for (int i = 0; i < layer_size; ++i) {
-        biases[i] = rand_real(gen);
-        input[i] = rand_real(gen);
-        for (int j = 0; j < layer_size; ++j) {
-            weights[i * layer_size + j] = rand_real(gen);
+        output[0][i] = rand_real(gen);
+    }
+
+    for (int step = 0; step < nsteps; ++step) {
+        for (int i = 0; i < layer_size; ++i) {
+            biases[step][i] = rand_real(gen);
+            for (int j = 0; j < layer_size; ++j) {
+                weights[step][i * layer_size + j] = rand_real(gen);
+            }
         }
     }
 
@@ -91,35 +96,41 @@ int main(int argc, char** argv) {
     int part_seed = find_int_arg(argc, argv, "-s", 0);
     int layer_size = find_int_arg(argc, argv, "-w", 1024);
 
-    double* input = new double[layer_size];
-    double* output = new double[layer_size];
-    double* weights = new double[layer_size * layer_size];
-    double* biases = new double[layer_size];
+    // double* input = new double[layer_size];
+    double* output[nsteps + 1];
+    double* weights[nsteps];
+    double* biases[nsteps];
 
-    init(input, weights, biases, layer_size, part_seed);
+    for (int step = 0; step < nsteps; ++step) {
+        output[step] = new double[layer_size];
+        weights[step] = new double[layer_size * layer_size];
+        biases[step] = new double[layer_size];
+    }
+    output[nsteps] = new double[layer_size];
 
-    double* input_gpu;
-    double* output_gpu;
-    double* weights_gpu;
-    double* biases_gpu;
+    init(output, weights, biases, layer_size, part_seed, nsteps);
 
-    cudaMalloc((void**)&input_gpu, layer_size * sizeof(double));
-    cudaMalloc((void**)&output_gpu, layer_size * sizeof(double));
-    cudaMalloc((void**)&weights_gpu, layer_size * layer_size * sizeof(double));
-    cudaMalloc((void**)&biases_gpu, layer_size * sizeof(double));
+    // double* input_gpu;
+    double* output_gpu[nsteps + 1];
+    double* weights_gpu[nsteps];
+    double* biases_gpu[nsteps];
 
-    cudaMemcpy(input_gpu, input, layer_size * sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(output_gpu, output, layer_size * sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(weights_gpu, weights, layer_size * layer_size * sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(biases_gpu, biases, layer_size * sizeof(double), cudaMemcpyHostToDevice);
+    for (int step = 0; step < nsteps; ++step) {
+        cudaMalloc((void**)&output_gpu[step], layer_size * sizeof(double));
+        cudaMalloc((void**)&weights_gpu[step], layer_size * layer_size * sizeof(double));
+        cudaMalloc((void**)&biases_gpu[step], layer_size * sizeof(double));
+        cudaMemcpy(output_gpu[step], output[step], layer_size * sizeof(double), cudaMemcpyHostToDevice);
+        cudaMemcpy(weights_gpu[step], weights[step], layer_size * layer_size * sizeof(double), cudaMemcpyHostToDevice);
+        cudaMemcpy(biases_gpu[step], biases[step], layer_size * sizeof(double), cudaMemcpyHostToDevice);
+    }
+    cudaMalloc((void**)&output_gpu[nsteps], layer_size * sizeof(double));
+    cudaMemcpy(output_gpu[nsteps], output[nsteps], layer_size * sizeof(double), cudaMemcpyHostToDevice);
 
     // Algorithm
     auto start_time = std::chrono::steady_clock::now();
 
     for (int step = 0; step < nsteps; ++step) {
-        forward_propagation(input_gpu, weights_gpu, biases_gpu, output_gpu, layer_size);
-        cudaDeviceSynchronize();
-        forward_propagation(output_gpu, weights_gpu, biases_gpu, input_gpu, layer_size);
+        forward_propagation(output_gpu[step], weights_gpu[step], biases_gpu[step], output_gpu[step + 1], layer_size);
         cudaDeviceSynchronize();
     }
 
@@ -130,13 +141,17 @@ int main(int argc, char** argv) {
 
     // Finalize
     std::cout << seconds << "\n";
-    cudaFree(input_gpu);
-    cudaFree(output_gpu);
-    cudaFree(weights_gpu);
-    cudaFree(biases_gpu);
-    delete[] input;
-    delete[] output;
-    delete[] weights;
-    delete[] biases;
+    
+    for (int step = 0; step < nsteps; ++step) {
+        cudaFree(output_gpu[step]);
+        cudaFree(weights_gpu[step]);
+        cudaFree(biases_gpu[step]);
+        delete[] output[step];
+        delete[] weights[step];
+        delete[] biases[step];
+    }
+    cudaFree(output_gpu[nsteps]);
+    delete[] output_gpu[nsteps];
+    
     return 0;
 }
